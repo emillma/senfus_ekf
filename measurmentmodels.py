@@ -18,7 +18,8 @@ class MeasurementModel(Protocol):
           sensor_state: Dict[str, Any] = None) -> np.ndarray: ...
 
     def R(self, x: np.ndarray, *,
-          sensor_state: Dict[str, Any] = None, z: np.ndarray = None) -> np.ndarray: ...
+          sensor_state: Dict[str, Any] = None,
+          z: np.ndarray = None) -> np.ndarray: ...
 
 # %% Models
 
@@ -34,11 +35,14 @@ class CartesianPosition:
             *,
             sensor_state: Dict[str, Any] = None,
           ) -> np.ndarray:
-        """Calculate the noise free measurement location at x in sensor_state."""
-        # TODO
+        """
+        Calculate the noise free measurement location at x in sensor_state.
+        """
+
+        measurement = np.block([np.eye(2), np.zeros([2, 2])]) @ x
         # x[0:2] is position
         # you do not need to care about sensor_state
-        return None
+        return measurement
 
     def H(self,
             x: np.ndarray,
@@ -46,11 +50,11 @@ class CartesianPosition:
             sensor_state: Dict[str, Any] = None,
           ) -> np.ndarray:
         """Calculate the measurement Jacobian matrix at x in sensor_state."""
-        # TODO
+        H = np.block([np.eye(2), np.zeros([2, 2])])
         # x[0:2] is position
         # you do not need to care about sensor_state
         # if you need the size of the state dimension it is in self.state_dim
-        return None
+        return H
 
     def R(self,
             x: np.ndarray,
@@ -58,8 +62,10 @@ class CartesianPosition:
             sensor_state: Dict[str, Any] = None,
             z: np.ndarray = None,
           ) -> np.ndarray:
-        """Calculate the measurement covariance matrix at x in sensor_state having potentially received measurement z."""
-        # TODO
+        """Calculate the measurement covariance matrix at x in sensor_state
+         having potentially received measurement z."""
+        R = self.sigma**2*np.eye(2)
         # you do not need to care about sensor_state
-        # sigma is available as self.sigma, and @dataclass makes it available in the init class constructor
-        return None
+        # sigma is available as self.sigma,
+        # and @dataclass makes it available in the init class constructor
+        return R

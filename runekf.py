@@ -8,7 +8,10 @@ import scipy.stats
 import scipy.io
 import matplotlib
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+
+matplotlib.use('Qt5Cairo')
 
 # to see your plot config
 print(f'matplotlib backend: {matplotlib.get_backend()}')
@@ -45,7 +48,7 @@ except Exception as e:
 data_path = 'data_for_ekf.mat'
 
 # TODO: choose this for the last task
-usePregen = True  # choose between own generated data and pre generated
+usePregen = False  # choose between own generated data and pre generated
 
 if usePregen:
     loadData: dict = scipy.io.loadmat(data_path)
@@ -55,7 +58,7 @@ if usePregen:
     Z: np.ndarray = loadData['Z'].T  # the measurements
 else:
     from sample_CT_trajectory import sample_CT_trajectory
-    np.random.seed(10)  # random seed can be set for repeatability
+    np.random.seed(11)  # random seed can be set for repeatability
 
     # initial state distribution
     x0 = np.array([0, 0, 1, 1, 0])
@@ -76,9 +79,9 @@ else:
 
 # show ground truth and measurements
 fig, ax = plt.subplots(num=1, clear=True)
-ax.scatter(*Z.T, color='C0', marker='.')
-ax.plot(*Xgt.T[:2], color='C1')
-ax.set_title('Data')
+ax.scatter(*Z.T, color='C0', marker='.', s=0.9)
+ax.plot(*Xgt.T[:2], color='C2')
+ax.set_title('Ground truth and measurements')
 
 # show turn rate
 fig2, ax2 = plt.subplots(num=2, clear=True)
@@ -90,8 +93,8 @@ ax2.set_ylabel('turn rate')
 # %% a: tune by hand and comment
 
 # set parameters
-sigma_a = 1  # TODO
-sigma_z = 1  # TODO
+sigma_a = 3.2  # TODO
+sigma_z = 2.7  # TODO
 
 # create the model and estimator object
 dynmod = dynamicmodels.WhitenoiseAccelleration(sigma_a)
@@ -100,17 +103,14 @@ ekf_filter = ekf.EKF(dynmod, measmod)
 print(ekf_filter)  # make use of the @dataclass automatic repr
 
 # initialize mean and covariance
-# TODO: ArrayLike (list, np. array, tuple, ...) with 4 elements
-x_bar_init = None
-P_bar_init = None  # TODO: ArrayLike with 4 x 4 elements, hint: np.diag
+x_bar_init = np.array([0, 0, 1, 1]).T  # ???
+P_bar_init = np.square(np.diag([75, 75, 10, 10]))
 init_ekfstate = ekf.GaussParams(x_bar_init, P_bar_init)
 
 # estimate
-# TODO
-# ekfpred_list, ekfupd_list = ekf_filter.estimate_sequence(# TODO fill this)
+ekfpred_list, ekfupd_list = ekf_filter.estimate_sequence(Z, init_ekfstate, Ts)
 
 # get statistics:
-# TODO: see that you sort of understand what this does
 stats = ekf_filter.performance_stats_sequence(
     K, Z=Z, ekfpred_list=ekfpred_list, ekfupd_list=ekfupd_list, X_true=Xgt[:, :4],
     norm_idxs=[[0, 1], [2, 3]], norms=[2, 2]
@@ -122,8 +122,8 @@ print(f'keys in stats is {stats.dtype.names}')
 # stats['dists_pred'] contains 2 norm of position and speed for each time index
 # same for 'dists_upd'
 # TODO: square stats['dists_pred'] -> take its mean over time -> take square root
-RMSE_pred = None  # TODO
-RMSE_upd = None  # TODO same for 'dists_upd'
+RMSE_pred = np.sqrt(np.mean(np.square(stats['dists_pred']), axis=0))
+RMSE_upd = np.sqrt(np.mean(np.square(stats['dists_upd']), axis=0))
 
 fig3, ax3 = plt.subplots(num=3, clear=True)
 
@@ -136,13 +136,12 @@ ax3.set_title(
 # %% Task 5 b and c
 
 # % parameters for the parameter grid
-# TODO: pick reasonable values for grid search
 # n_vals = 20  # is Ok, try lower to begin with for more speed (20*20*1000 = 400 000 KF steps)
-n_vals = 20
-sigma_a_low = np.nan
-sigma_a_high = np.nan
-sigma_z_low = np.nan
-sigma_z_high = np.nan
+n_vals = 2  # 20
+sigma_a_low = 0.1
+sigma_a_high = 10
+sigma_z_low = 0.1
+sigma_z_high = 10
 
 # % set the grid on logscale(not mandatory)
 sigma_a_list = np.logspace(
@@ -157,34 +156,42 @@ stats_array = np.empty((n_vals, n_vals, K), dtype=dtype)
 # %% run through the grid and estimate
 # ? Should be more or less a copy of the above
 for i, sigma_a in enumerate(sigma_a_list):
-    dynmod = None  # TODO
+    dynmod = dynamicmodels.WhitenoiseAccelleration(sigma_a)
     for j, sigma_z in enumerate(sigma_z_list):
-        measmod = None  # TODO
-        ekf_filter = None  # TODO
+        measmod = measurmentmodels.CartesianPosition(sigma_z)
+        ekf_filter = ekf.EKF(dynmod, measmod)
 
-        ekfpred_list, ekfupd_list = None  # TODO
-        stats_array[i, j] = None  # TODO
+        ekfpred_list, ekfupd_list = ekf_filter.estimate_sequence(
+            Z, init_ekfstate, Ts)
+        stats_array[i, j] = ekf_filter.performance_stats_sequence(
+            K, Z=Z, ekfpred_list=ekfpred_list, ekfupd_list=ekfupd_list, X_true=Xgt[:, :4],
+            norm_idxs=[[0, 1], [2, 3]], norms=[2, 2]
+        )
+
 
 # %% calculate averages
 
-# TODO, remember to use axis argument, see eg. stats_array['dists_pred'].shape
-RMSE_pred = None  # TODO
-RMSE_upd = None  # TODO
-ANEES_pred = None  # TODO mean of NEES over time
-ANEES_upd = None  # TODO
-ANIS = None  # TODO mean of NIS over time
+RMSE_pred = np.sqrt(np.mean(np.square(stats_array['dists_pred']), axis=2))
+RMSE_upd = np.sqrt(np.mean(np.square(stats_array['dists_upd']), axis=2))
+ANEES_pred = np.mean(stats_array['NEESpred'], axis=2)  # mean of NEES over time
+ANEES_upd = np.mean(stats_array['NEESupd'], axis=2)
+ANIS = np.mean(stats_array['NIS'], axis=2)  # mean of NIS over time
 
+ANIS = np.where(ANIS < 10, ANIS, np.nan)
+ANEES_pred = np.where(ANEES_pred < 50, ANEES_pred, np.nan)
+ANEES_upd = np.where(ANEES_upd < 50, ANEES_upd, np.nan)
 
 # %% find confidence regions for NIS and plot
-confprob = np.nan  # TODO number to use for confidence interval
-CINIS = np.nan  # TODO confidence intervall for NIS, hint: scipy.stats.chi2.interval
+confprob = 0.9  # ??? number to use for confidence interval
+# ??? confidence intervall for NIS, hint: scipy.stats.chi2.interval
+CINIS = np.array(scipy.stats.chi2.interval(confprob, 2*K)) / K
 print(CINIS)
 
 # plot
 fig4 = plt.figure(4, clear=True)
 ax4 = plt.gca(projection='3d')
 ax4.plot_surface(*np.meshgrid(sigma_a_list, sigma_z_list),
-                 ANIS, alpha=0.9)
+                 ANIS, alpha=0.7)
 ax4.contour(*np.meshgrid(sigma_a_list, sigma_z_list),
             ANIS, [1, 1.5, *CINIS, 2.5, 3], offset=0)  # , extend3d=True, colors='yellow')
 ax4.set_xlabel(r'$\sigma_a$')
@@ -194,8 +201,9 @@ ax4.set_zlim(0, 10)
 ax4.view_init(30, 20)
 
 # %% find confidence regions for NEES and plot
-confprob = np.nan  # TODO
-CINEES = np.nan  # TODO, not NIS now, but very similar
+confprob = 0.9
+CINEES = np.array(scipy.stats.chi2.interval(confprob, 4*K)) / K
+# TODO, not NIS now, but very similar
 print(CINEES)
 
 # plot
@@ -203,7 +211,7 @@ fig5 = plt.figure(5, clear=True)
 ax5s = [fig5.add_subplot(1, 2, 1, projection='3d'),
         fig5.add_subplot(1, 2, 2, projection='3d')]
 ax5s[0].plot_surface(*np.meshgrid(sigma_a_list, sigma_z_list),
-                     ANEES_pred, alpha=0.9)
+                     ANEES_pred, alpha=0.7)
 ax5s[0].contour(*np.meshgrid(sigma_a_list, sigma_z_list),
                 ANEES_pred, [3, 3.5, *CINEES, 4.5, 5], offset=0)
 ax5s[0].set_xlabel(r'$\sigma_a$')
@@ -213,7 +221,7 @@ ax5s[0].set_zlim(0, 50)
 ax5s[0].view_init(40, 30)
 
 ax5s[1].plot_surface(*np.meshgrid(sigma_a_list, sigma_z_list),
-                     ANEES_upd, alpha=0.9)
+                     ANEES_upd, alpha=0.7)
 ax5s[1].contour(*np.meshgrid(sigma_a_list, sigma_z_list),
                 ANEES_upd, [3, 3.5, *CINEES, 4.5, 5], offset=0)
 ax5s[1].set_xlabel(r'$\sigma_a$')
